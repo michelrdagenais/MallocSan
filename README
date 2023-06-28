@@ -1,0 +1,27 @@
+This is an experiment to use tainted pointers in order to check memory accesses. 
+Based on some criteria, pointers returned by malloc are tainted, adding a taint 
+in the 2 MS bytes unused bits. When a tainted pointer is accessed, a SIGSEGV occurs.
+The SIGSEGV handler then needs to untaint the offending register, check the access versus the
+object bounds, make the access, and retaint the offending register. Getting back the control 
+after the access, to retaint the register, is the tricky part. The access instruction 
+is executed out of line such that the retainting code can be executed after. 
+This is achieved using libolx.
+
+As an optimisation, the instructions accessing tainted registers car be patched to jump to
+a "pre" handler, execute the access instruction out of line, and then jump to a "post" handler
+before continuing with the instructions that follow the access. It is much faster because 
+it avoids the SIGSEGV. This is achieved with libpatch.
+
+Currently, this library only taints pointers to assess the performance of the different
+approaches. It does not really check the accesses. This can easily be added.
+
+One problem is that the tainted pointers can eventually reach the kernel and the SIGSEGV
+handler will not get called there. One solution is to use a special version of the Linux
+kernel that checks and untaints pointers. Another solution is to wrap all the libc 
+functions that implement system calls to check and untaint pointers. A number of
+libc functions are wrapped in dw-wrap-glibc but there are cases that are difficult
+to handle, and currently only a subset of functions are wrapped.
+
+Here is a sample command line:
+
+time LD_PRELOAD=./libdatawatch.so DW_STATS_FILE=stats.txt DW_STRATEGY=1 DW_LOG_LEVEL=0 ./simple 10 1000000 2>out.txt
